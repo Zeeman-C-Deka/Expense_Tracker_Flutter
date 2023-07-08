@@ -1,35 +1,50 @@
-import 'dart:math';
-
+import 'package:expense_tracker/data/data.dart';
 import 'package:expense_tracker/widgets/chart/chart.dart';
 import 'package:expense_tracker/widgets/expense_list/expenses_list.dart';
 import 'package:expense_tracker/model/expense.dart';
 import 'package:expense_tracker/widgets/new_expense.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class Expenses extends StatefulWidget {
+class Expenses extends ConsumerStatefulWidget {
   const Expenses({super.key});
 
   @override
-  State<Expenses> createState() {
+  ConsumerState<Expenses> createState() {
     return _ExpensesState();
   }
 }
 
-class _ExpensesState extends State<Expenses> {
-  final List<Expense> _registeredExpenses = [
-    Expense(
-      title: 'Flutter Course',
-      amount: 500.00,
-      date: DateTime.now(),
-      category: Category.work,
-    ),
-    Expense(
-      title: 'Cinema',
-      amount: 290,
-      date: DateTime.now(),
-      category: Category.leisure,
-    ),
-  ];
+class _ExpensesState extends ConsumerState<Expenses> {
+  late Future<void> _expFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _expFuture = ref.read(dataProvider.notifier).loadData();
+  }
+
+  void _removeExpense(Expense expense) {
+    //final expenseIndex = _registeredExpenses.indexOf(expense);
+    setState(() {
+      ref.read(dataProvider.notifier).removeExp(expense);
+    });
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 3),
+        content: const Text('Expense deleted'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () {
+            setState(() {
+              ref.read(dataProvider.notifier).addExp(expense);
+            });
+          },
+        ),
+      ),
+    );
+  }
 
   void _openAddExpenseOverlay() {
     showModalBottomSheet(
@@ -44,43 +59,23 @@ class _ExpensesState extends State<Expenses> {
 
   void _addExpense(Expense expense) {
     setState(() {
-      _registeredExpenses.add(expense);
+      ref.read(dataProvider.notifier).addExp(expense);
     });
-  }
-
-  void _removeExpense(Expense expense) {
-    final expenseIndex = _registeredExpenses.indexOf(expense);
-    setState(() {
-      _registeredExpenses.remove(expense);
-    });
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 3),
-        content: const Text('Expense deleted'),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () {
-            setState(() {
-              _registeredExpenses.insert(expenseIndex, expense);
-            });
-          },
-        ),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final registeredExpenses = ref.watch(dataProvider);
+
     final width = MediaQuery.of(context).size.width;
 
     Widget mainContent = const Center(
       child: Text('No expenses found. Start adding some!'),
     );
 
-    if (_registeredExpenses.isNotEmpty) {
+    if (registeredExpenses.isNotEmpty) {
       mainContent = ExpensesList(
-        expenses: _registeredExpenses,
+        expenses: registeredExpenses,
         onRemoveExpense: _removeExpense,
       );
     }
@@ -95,25 +90,33 @@ class _ExpensesState extends State<Expenses> {
           )
         ],
       ),
-      body: width < 600
-          ? Column(
-              children: [
-                Chart(expenses: _registeredExpenses),
-                Expanded(
-                  child: mainContent,
-                ),
-              ],
-            )
-          : Row(
-              children: [
-                Expanded(
-                  child: Chart(expenses: _registeredExpenses),
-                ),
-                Expanded(
-                  child: mainContent,
-                ),
-              ],
-            ),
+      body: FutureBuilder(
+        future: _expFuture,
+        builder: (context, snapshot) =>
+            snapshot.connectionState == ConnectionState.waiting
+                ? (const Center(
+                    child: CircularProgressIndicator(),
+                  ))
+                : (width < 600
+                    ? (Column(
+                        children: [
+                          Chart(expenses: registeredExpenses),
+                          Expanded(
+                            child: mainContent,
+                          ),
+                        ],
+                      ))
+                    : (Row(
+                        children: [
+                          Expanded(
+                            child: Chart(expenses: registeredExpenses),
+                          ),
+                          Expanded(
+                            child: mainContent,
+                          ),
+                        ],
+                      ))),
+      ),
     );
   }
 }
